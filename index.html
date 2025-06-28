@@ -435,10 +435,10 @@
                 </div>
 
                 <div class="form-group">
-                    <label>Photos (Optional - Max 5)</label>
+                    <label>Photos (Optional - Max 3)</label>
                     <div class="photo-upload" onclick="document.getElementById('photoInput').click()">
                         <p>📸 Click here to upload photos or drag and drop</p>
-                        <p class="photo-count">0 / 5 photos selected</p>
+                        <p class="photo-count">0 / 3 photos selected</p>
                     </div>
                     <input type="file" id="photoInput" multiple accept="image/*">
                     <div class="photo-preview" id="photoPreview"></div>
@@ -446,7 +446,7 @@
 
                 <div class="button-group">
                     <button type="submit" class="submit-btn">Submit Message 🎂</button>
-                    <button type="button" class="pdf-btn" id="pdfBtn" onclick="generatePDF()" style="display: none;">📄 Download PDF</button>
+                    <button type="button" class="pdf-btn" id="pngBtn" onclick="generatePNG()" style="display: none;">🖼️ Download PNG</button>
                 </div>
             </form>
         </div>
@@ -456,11 +456,11 @@
             <h3 style="margin-bottom: 20px; color: #2d3748;">Master Gallery Controls</h3>
             <p style="margin-bottom: 20px; color: #4a5568;">Import submission files from your friends to build the complete gallery</p>
             <div class="button-group">
-                <button class="import-btn" onclick="document.getElementById('importInput').click()">📁 Import PDFs</button>
-                <button class="pdf-btn" onclick="generateMasterPDF()">📄 Generate Complete PDF Book</button>
+                <button class="import-btn" onclick="document.getElementById('importInput').click()">📁 Import PNGs</button>
+                <button class="pdf-btn" onclick="generateMasterPNG()">🖼️ Generate Complete PNG Collection</button>
                 <button class="nav-btn" onclick="clearAllSubmissions()">🗑️ Clear Gallery</button>
             </div>
-            <input type="file" id="importInput" multiple accept=".pdf" onchange="importPDFs(event)">
+            <input type="file" id="importInput" multiple accept=".png" onchange="importPNGs(event)">
             <div class="success-message" id="successMessage"></div>
         </div>
 
@@ -594,53 +594,330 @@
             
             submissions.push(currentSubmission);
             
-            // Show PDF download button
-            document.getElementById('pdfBtn').style.display = 'inline-block';
-            showSuccessMessage('Message submitted! Click "Download PDF" to save it and send it to the birthday person.');
+            // Show PNG download button
+            document.getElementById('pngBtn').style.display = 'inline-block';
+            showSuccessMessage('Message submitted! Click "Download PNG" to save it and send it to the birthday person.');
             
             // Show gallery controls
             document.getElementById('viewToggle').style.display = 'block';
             updateGallery();
         });
 
-        async function generatePDF() {
+        async function generatePNG() {
             if (!currentSubmission) {
-                alert('No submission to generate PDF for!');
+                alert('No submission to generate PNG for!');
                 return;
             }
 
-            const pdf = new jsPDF('p', 'mm', [254, 254]); // 10x10 inches = 254x254 mm
-            const pageWidth = pdf.internal.pageSize.getWidth();
-            const pageHeight = pdf.internal.pageSize.getHeight();
-            const margin = 15;
+            // Create a 10x10 inch canvas at 300 DPI (3000x3000 pixels)
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            const size = 3000; // 10 inches at 300 DPI
+            canvas.width = size;
+            canvas.height = size;
+
+            // White background
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, size, size);
+
+            const margin = 150; // 0.5 inch margin
             let yPos = margin;
 
-            // Set font to Helvetica
-            pdf.setFont('helvetica');
+            // Set font
+            ctx.fillStyle = '#000000';
+            ctx.font = 'bold 80px Arial, sans-serif'; // ~22pt at 300 DPI
+            ctx.textAlign = 'center';
 
             // Add name
-            pdf.setFontSize(22);
-            pdf.setTextColor(0, 0, 0);
-            pdf.text(currentSubmission.name, pageWidth / 2, yPos, { align: 'center' });
-            yPos += 20;
+            ctx.fillText(currentSubmission.name, size / 2, yPos + 60);
+            yPos += 120;
 
             // Add message
-            pdf.setFontSize(16);
-            pdf.setTextColor(0, 0, 0);
-            const messageLines = pdf.splitTextToSize(currentSubmission.message, pageWidth - 2 * margin);
-            pdf.text(messageLines, margin, yPos);
-            yPos += messageLines.length * 6 + 15;
+            ctx.font = '60px Arial, sans-serif'; // ~16pt at 300 DPI
+            ctx.textAlign = 'left';
+            
+            const maxWidth = size - 2 * margin;
+            const lines = wrapText(ctx, currentSubmission.message, maxWidth);
+            
+            for (let line of lines) {
+                ctx.fillText(line, margin, yPos + 45);
+                yPos += 70;
+            }
+            
+            yPos += 60; // Space before photos
 
-            // Arrange photos like an expert designer
+            // Arrange photos
             if (currentSubmission.photos.length > 0) {
-                await arrangePhotosDesigner(pdf, currentSubmission.photos, pageWidth, pageHeight, yPos, margin);
+                await arrangePhotosCanvas(ctx, currentSubmission.photos, size, size, yPos, margin);
             }
 
-            // Save the PDF
-            const fileName = `birthday-message-${currentSubmission.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
-            pdf.save(fileName);
+            // Convert canvas to PNG and download
+            canvas.toBlob((blob) => {
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = `birthday-message-${currentSubmission.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.png`;
+                link.click();
+                URL.revokeObjectURL(url);
+                
+                showSuccessMessage(`PNG downloaded! Send the file to the birthday person.`);
+            }, 'image/png');
+        }
+
+        function wrapText(ctx, text, maxWidth) {
+            const words = text.split(' ');
+            const lines = [];
+            let currentLine = '';
+
+            for (let word of words) {
+                const testLine = currentLine + (currentLine ? ' ' : '') + word;
+                const metrics = ctx.measureText(testLine);
+                
+                if (metrics.width > maxWidth && currentLine) {
+                    lines.push(currentLine);
+                    currentLine = word;
+                } else {
+                    currentLine = testLine;
+                }
+            }
             
-            showSuccessMessage(`PDF downloaded! Send "${fileName}" to the birthday person.`);
+            if (currentLine) {
+                lines.push(currentLine);
+            }
+            
+            return lines;
+        }
+
+        async function arrangePhotosCanvas(ctx, photos, canvasWidth, canvasHeight, startY, margin) {
+            const availableWidth = canvasWidth - 2 * margin;
+            const availableHeight = canvasHeight - startY - margin;
+            
+            // Load all images
+            const imageData = await Promise.all(photos.map(async (photo) => {
+                const img = new Image();
+                img.src = photo;
+                
+                return new Promise((resolve) => {
+                    img.onload = () => {
+                        resolve({
+                            img: img,
+                            width: img.width,
+                            height: img.height,
+                            aspectRatio: img.width / img.height
+                        });
+                    };
+                });
+            }));
+
+            // Calculate global scale for proper fitting
+            const totalImageArea = imageData.reduce((sum, data) => sum + (data.width * data.height), 0);
+            const availableArea = availableWidth * availableHeight * 0.6; // Use 60% of available space
+            const globalScale = Math.sqrt(availableArea / totalImageArea) * 0.8; // Additional scale factor
+
+            // Layout based on number of photos
+            switch (imageData.length) {
+                case 1:
+                    await layoutSinglePhotoCanvas(ctx, imageData[0], availableWidth, availableHeight, startY, margin, globalScale);
+                    break;
+                case 2:
+                    await layoutTwoPhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin, globalScale);
+                    break;
+                case 3:
+                    await layoutThreePhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin, globalScale);
+                    break;
+                case 4:
+                    await layoutFourPhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin, globalScale);
+                    break;
+                case 5:
+                    await layoutFivePhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin, globalScale);
+                    break;
+            }
+        }
+
+        async function layoutSinglePhotoCanvas(ctx, imgData, availableWidth, availableHeight, startY, margin, globalScale) {
+            const maxWidth = availableWidth * 0.8;
+            const maxHeight = availableHeight * 0.8;
+            
+            let width = imgData.width * globalScale * 2;
+            let height = imgData.height * globalScale * 2;
+            
+            if (width > maxWidth) {
+                width = maxWidth;
+                height = width / imgData.aspectRatio;
+            }
+            if (height > maxHeight) {
+                height = maxHeight;
+                width = height * imgData.aspectRatio;
+            }
+            
+            const x = margin + (availableWidth - width) / 2;
+            const y = startY + (availableHeight - height) / 2;
+            
+            ctx.drawImage(imgData.img, x, y, width, height);
+        }
+
+        async function layoutTwoPhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin, globalScale) {
+            const img1 = imageData[0], img2 = imageData[1];
+            const bothPortrait = img1.aspectRatio < 1 && img2.aspectRatio < 1;
+            
+            if (bothPortrait) {
+                // Side by side
+                const photoWidth = (availableWidth - 40) / 2;
+                
+                for (let i = 0; i < 2; i++) {
+                    const imgData = imageData[i];
+                    let width = Math.min(photoWidth, imgData.width * globalScale * 1.5);
+                    let height = width / imgData.aspectRatio;
+                    
+                    if (height > availableHeight * 0.8) {
+                        height = availableHeight * 0.8;
+                        width = height * imgData.aspectRatio;
+                    }
+                    
+                    const x = margin + (i * (photoWidth + 40)) + (photoWidth - width) / 2;
+                    const y = startY + (availableHeight - height) / 2 + (i % 2) * 30;
+                    
+                    ctx.drawImage(imgData.img, x, y, width, height);
+                }
+            } else {
+                // Overlapping arrangement
+                const baseSize = Math.min(availableWidth, availableHeight) * 0.5;
+                
+                for (let i = 0; i < 2; i++) {
+                    const imgData = imageData[i];
+                    let width = Math.min(baseSize, imgData.width * globalScale * 1.3);
+                    let height = width / imgData.aspectRatio;
+                    
+                    if (height > availableHeight * 0.7) {
+                        height = availableHeight * 0.7;
+                        width = height * imgData.aspectRatio;
+                    }
+                    
+                    const offsetX = i * (availableWidth * 0.25);
+                    const offsetY = i * 50;
+                    
+                    const x = margin + offsetX + (availableWidth * 0.4 - width) / 2;
+                    const y = startY + offsetY + (availableHeight - height) / 2;
+                    
+                    ctx.drawImage(imgData.img, x, y, width, height);
+                }
+            }
+        }
+
+        async function layoutThreePhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin, globalScale) {
+            // Triangle/L-shape arrangement
+            const positions = [
+                { x: 0.1, y: 0.1, scale: 1.2 },
+                { x: 0.55, y: 0.05, scale: 1.0 },
+                { x: 0.25, y: 0.55, scale: 1.1 }
+            ];
+            
+            for (let i = 0; i < 3; i++) {
+                const imgData = imageData[i];
+                const pos = positions[i];
+                
+                let width = imgData.width * globalScale * pos.scale;
+                let height = imgData.height * globalScale * pos.scale;
+                
+                const maxSize = Math.min(availableWidth, availableHeight) * 0.4;
+                if (width > maxSize) {
+                    width = maxSize;
+                    height = width / imgData.aspectRatio;
+                }
+                if (height > maxSize) {
+                    height = maxSize;
+                    width = height * imgData.aspectRatio;
+                }
+                
+                const x = margin + (pos.x * (availableWidth - width));
+                const y = startY + (pos.y * (availableHeight - height));
+                
+                ctx.drawImage(imgData.img, x, y, width, height);
+            }
+        }
+
+        async function layoutFourPhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin, globalScale) {
+            // 2x2 grid with offsets
+            const gridGap = 30;
+            const cellWidth = (availableWidth - gridGap) / 2;
+            const cellHeight = (availableHeight - gridGap) / 2;
+            
+            const positions = [
+                { row: 0, col: 0, offsetX: 0, offsetY: 0 },
+                { row: 0, col: 1, offsetX: 15, offsetY: -10 },
+                { row: 1, col: 0, offsetX: -8, offsetY: 8 },
+                { row: 1, col: 1, offsetX: 12, offsetY: 15 }
+            ];
+            
+            for (let i = 0; i < 4; i++) {
+                const imgData = imageData[i];
+                const pos = positions[i];
+                
+                let width = Math.min(cellWidth * 0.85, imgData.width * globalScale);
+                let height = width / imgData.aspectRatio;
+                
+                if (height > cellHeight * 0.85) {
+                    height = cellHeight * 0.85;
+                    width = height * imgData.aspectRatio;
+                }
+                
+                const baseX = margin + (pos.col * (cellWidth + gridGap));
+                const baseY = startY + (pos.row * (cellHeight + gridGap));
+                
+                const x = baseX + (cellWidth - width) / 2 + pos.offsetX;
+                const y = baseY + (cellHeight - height) / 2 + pos.offsetY;
+                
+                ctx.drawImage(imgData.img, x, y, width, height);
+            }
+        }
+
+        async function layoutFivePhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin, globalScale) {
+            // Asymmetrical layout - one large, four small
+            const leftWidth = availableWidth * 0.45;
+            const rightWidth = availableWidth * 0.5;
+            const centerGap = availableWidth * 0.05;
+            
+            // Main photo on left
+            const mainData = imageData[0];
+            let mainWidth = Math.min(leftWidth, mainData.width * globalScale * 1.4);
+            let mainHeight = mainWidth / mainData.aspectRatio;
+            
+            const maxMainHeight = availableHeight * 0.8;
+            if (mainHeight > maxMainHeight) {
+                mainHeight = maxMainHeight;
+                mainWidth = mainHeight * mainData.aspectRatio;
+            }
+            
+            const mainX = margin + (leftWidth - mainWidth) / 2;
+            const mainY = startY + (availableHeight - mainHeight) / 2;
+            ctx.drawImage(mainData.img, mainX, mainY, mainWidth, mainHeight);
+            
+            // Four smaller photos on right
+            const rightStartX = margin + leftWidth + centerGap;
+            const rightPositions = [
+                { x: 0, y: 0.1, scale: 1.0 },
+                { x: 0.55, y: 0.05, scale: 0.8 },
+                { x: 0.1, y: 0.55, scale: 0.9 },
+                { x: 0.5, y: 0.65, scale: 0.85 }
+            ];
+            
+            for (let i = 1; i < 5; i++) {
+                const imgData = imageData[i];
+                const pos = rightPositions[i - 1];
+                
+                let width = Math.min(rightWidth * 0.4 * pos.scale, imgData.width * globalScale);
+                let height = width / imgData.aspectRatio;
+                
+                if (height > availableHeight * 0.3) {
+                    height = availableHeight * 0.3;
+                    width = height * imgData.aspectRatio;
+                }
+                
+                const x = rightStartX + (pos.x * (rightWidth - width));
+                const y = startY + (pos.y * (availableHeight - height));
+                
+                ctx.drawImage(imgData.img, x, y, width, height);
+            }
         }
 
         async function arrangePhotosDesigner(pdf, photos, pageWidth, pageHeight, startY, margin) {
@@ -931,55 +1208,81 @@
             }
         }
 
-        async function generateMasterPDF() {
+        async function generateMasterPNG() {
             if (submissions.length === 0) {
-                alert('No submissions to generate PDF for!');
+                alert('No submissions to generate PNG collection for!');
                 return;
             }
 
-            const pdf = new jsPDF('p', 'mm', [254, 254]); // 10x10 inches = 254x254 mm
-
-            // Set font to Helvetica
-            pdf.setFont('helvetica');
-
-            // Individual submissions
+            // Create a ZIP-like collection by generating individual PNGs
+            const zip = [];
+            
             for (let i = 0; i < submissions.length; i++) {
                 const submission = submissions[i];
-                if (i > 0) pdf.addPage(); // Add new page for each submission except first
+                currentSubmission = submission; // Temporarily set for PNG generation
                 
-                const pageWidth = pdf.internal.pageSize.getWidth();
-                const pageHeight = pdf.internal.pageSize.getHeight();
-                const margin = 15;
+                // Generate PNG for this submission
+                const canvas = document.createElement('canvas');
+                const ctx = canvas.getContext('2d');
+                const size = 3000;
+                canvas.width = size;
+                canvas.height = size;
+
+                // White background
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(0, 0, size, size);
+
+                const margin = 150;
                 let yPos = margin;
 
-                // Name
-                pdf.setFontSize(22);
-                pdf.setTextColor(0, 0, 0);
-                pdf.text(submission.name, pageWidth / 2, yPos, { align: 'center' });
-                yPos += 20;
+                // Add name
+                ctx.fillStyle = '#000000';
+                ctx.font = 'bold 80px Arial, sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(submission.name, size / 2, yPos + 60);
+                yPos += 120;
 
-                // Message
-                pdf.setFontSize(16);
-                pdf.setTextColor(0, 0, 0);
-                const messageLines = pdf.splitTextToSize(submission.message, pageWidth - 2 * margin);
-                pdf.text(messageLines, margin, yPos);
-                yPos += messageLines.length * 6 + 15;
-
-                // Arrange photos like an expert designer
-                if (submission.photos && submission.photos.length > 0) {
-                    await arrangePhotosDesigner(pdf, submission.photos, pageWidth, pageHeight, yPos, margin);
+                // Add message
+                ctx.font = '60px Arial, sans-serif';
+                ctx.textAlign = 'left';
+                
+                const maxWidth = size - 2 * margin;
+                const lines = wrapText(ctx, submission.message, maxWidth);
+                
+                for (let line of lines) {
+                    ctx.fillText(line, margin, yPos + 45);
+                    yPos += 70;
                 }
-            }
+                
+                yPos += 60;
 
-            // Save master PDF
-            const fileName = `complete-birthday-book-${new Date().toISOString().split('T')[0]}.pdf`;
-            pdf.save(fileName);
+                // Arrange photos
+                if (submission.photos && submission.photos.length > 0) {
+                    await arrangePhotosCanvas(ctx, submission.photos, size, size, yPos, margin);
+                }
+
+                // Convert to blob and trigger download
+                await new Promise((resolve) => {
+                    canvas.toBlob((blob) => {
+                        const url = URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.download = `birthday-message-${submission.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.png`;
+                        link.click();
+                        URL.revokeObjectURL(url);
+                        resolve();
+                    }, 'image/png');
+                });
+                
+                // Small delay between downloads
+                await new Promise(resolve => setTimeout(resolve, 500));
+            }
             
-            showSuccessMessage('Complete birthday book PDF generated successfully!');
+            showSuccessMessage(`Generated ${submissions.length} PNG files! Check your downloads folder.`);
         }
 
-        function importPDFs(event) {
-            showSuccessMessage('PDF import feature: Have your friends send you their individual PDFs. You can then combine them manually or use the "Generate Complete PDF Book" feature after they submit through the form.');
+        function importPNGs(event) {
+            showSuccessMessage('PNG import feature: Have your friends send you their individual PNG files. You can then use the "Generate Complete PNG Collection" feature after they submit through the form.');
             event.target.value = '';
         }
 
