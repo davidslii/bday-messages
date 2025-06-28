@@ -609,81 +609,31 @@
                 return;
             }
 
-            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pdf = new jsPDF('p', 'mm', [254, 254]); // 10x10 inches = 254x254 mm
             const pageWidth = pdf.internal.pageSize.getWidth();
             const pageHeight = pdf.internal.pageSize.getHeight();
-            const margin = 20;
+            const margin = 15;
             let yPos = margin;
 
             // Set font to Helvetica
             pdf.setFont('helvetica');
 
             // Add name
-            pdf.setFontSize(18);
+            pdf.setFontSize(22);
             pdf.setTextColor(0, 0, 0);
-            pdf.text(currentSubmission.name, margin, yPos);
-            yPos += 15;
+            pdf.text(currentSubmission.name, pageWidth / 2, yPos, { align: 'center' });
+            yPos += 20;
 
             // Add message
-            pdf.setFontSize(18);
+            pdf.setFontSize(16);
             pdf.setTextColor(0, 0, 0);
             const messageLines = pdf.splitTextToSize(currentSubmission.message, pageWidth - 2 * margin);
             pdf.text(messageLines, margin, yPos);
-            yPos += messageLines.length * 8 + 20;
+            yPos += messageLines.length * 6 + 15;
 
-            // Add photos
+            // Arrange photos like an expert designer
             if (currentSubmission.photos.length > 0) {
-                for (let i = 0; i < currentSubmission.photos.length; i++) {
-                    const photo = currentSubmission.photos[i];
-                    
-                    try {
-                        // Load image to get dimensions
-                        const img = new Image();
-                        img.src = photo;
-                        
-                        await new Promise((resolve) => {
-                            img.onload = () => {
-                                // Calculate aspect ratio preserving dimensions
-                                const originalWidth = img.width;
-                                const originalHeight = img.height;
-                                const aspectRatio = originalWidth / originalHeight;
-                                
-                                // Max available width and height on page
-                                const maxWidth = pageWidth - 2 * margin;
-                                const maxHeight = pageHeight - yPos - margin;
-                                
-                                let imgWidth, imgHeight;
-                                
-                                // Scale to fit within available space while preserving aspect ratio
-                                if (aspectRatio > 1) {
-                                    // Landscape orientation
-                                    imgWidth = Math.min(maxWidth, 120);
-                                    imgHeight = imgWidth / aspectRatio;
-                                } else {
-                                    // Portrait orientation
-                                    imgHeight = Math.min(maxHeight, 120);
-                                    imgWidth = imgHeight * aspectRatio;
-                                }
-                                
-                                // Ensure image fits on current page, otherwise add new page
-                                if (yPos + imgHeight > pageHeight - margin) {
-                                    pdf.addPage();
-                                    yPos = margin;
-                                }
-                                
-                                // Add image with preserved aspect ratio
-                                pdf.addImage(photo, 'JPEG', margin, yPos, imgWidth, imgHeight);
-                                yPos += imgHeight + 15;
-                                
-                                resolve();
-                            };
-                        });
-                        
-                    } catch (error) {
-                        console.error('Error adding image to PDF:', error);
-                        // Continue with next photo if one fails
-                    }
-                }
+                await arrangePhotosDesigner(pdf, currentSubmission.photos, pageWidth, pageHeight, yPos, margin);
             }
 
             // Save the PDF
@@ -691,6 +641,191 @@
             pdf.save(fileName);
             
             showSuccessMessage(`PDF downloaded! Send "${fileName}" to the birthday person.`);
+        }
+
+        async function arrangePhotosDesigner(pdf, photos, pageWidth, pageHeight, startY, margin) {
+            const availableWidth = pageWidth - 2 * margin;
+            const availableHeight = pageHeight - startY - margin;
+            
+            // Load all images and get their dimensions
+            const imageData = await Promise.all(photos.map(async (photo, index) => {
+                const img = new Image();
+                img.src = photo;
+                
+                return new Promise((resolve) => {
+                    img.onload = () => {
+                        resolve({
+                            src: photo,
+                            width: img.width,
+                            height: img.height,
+                            aspectRatio: img.width / img.height,
+                            index: index
+                        });
+                    };
+                });
+            }));
+
+            // Designer layout patterns based on number of photos
+            switch (imageData.length) {
+                case 1:
+                    await layoutSinglePhoto(pdf, imageData[0], availableWidth, availableHeight, startY, margin);
+                    break;
+                case 2:
+                    await layoutTwoPhotos(pdf, imageData, availableWidth, availableHeight, startY, margin);
+                    break;
+                case 3:
+                    await layoutThreePhotos(pdf, imageData, availableWidth, availableHeight, startY, margin);
+                    break;
+                case 4:
+                    await layoutFourPhotos(pdf, imageData, availableWidth, availableHeight, startY, margin);
+                    break;
+                case 5:
+                    await layoutFivePhotos(pdf, imageData, availableWidth, availableHeight, startY, margin);
+                    break;
+            }
+        }
+
+        async function layoutSinglePhoto(pdf, img, availableWidth, availableHeight, startY, margin) {
+            // Center the photo, make it large but not overwhelming
+            const maxSize = Math.min(availableWidth * 0.8, availableHeight * 0.8);
+            let width, height;
+            
+            if (img.aspectRatio > 1) {
+                width = Math.min(maxSize, availableWidth * 0.8);
+                height = width / img.aspectRatio;
+            } else {
+                height = Math.min(maxSize, availableHeight * 0.8);
+                width = height * img.aspectRatio;
+            }
+            
+            const x = margin + (availableWidth - width) / 2;
+            const y = startY + (availableHeight - height) / 2;
+            
+            pdf.addImage(img.src, 'JPEG', x, y, width, height);
+        }
+
+        async function layoutTwoPhotos(pdf, images, availableWidth, availableHeight, startY, margin) {
+            // Side by side with slight overlap for visual interest
+            const totalWidth = availableWidth * 0.9;
+            const photoWidth = totalWidth * 0.55; // Slight overlap
+            const overlap = totalWidth * 0.1;
+            
+            for (let i = 0; i < 2; i++) {
+                const img = images[i];
+                const width = Math.min(photoWidth, availableHeight * 0.7 * img.aspectRatio);
+                const height = width / img.aspectRatio;
+                
+                const x = margin + (i * (photoWidth - overlap));
+                const y = startY + (availableHeight - height) / 2 + (i % 2) * 10; // Slight vertical offset
+                
+                pdf.addImage(img.src, 'JPEG', x, y, width, height);
+            }
+        }
+
+        async function layoutThreePhotos(pdf, images, availableWidth, availableHeight, startY, margin) {
+            // Two on top, one larger below - classic scrapbook layout
+            const topRowWidth = availableWidth * 0.4;
+            const bottomWidth = availableWidth * 0.6;
+            
+            // Top row - two smaller photos
+            for (let i = 0; i < 2; i++) {
+                const img = images[i];
+                const width = topRowWidth;
+                const height = Math.min(width / img.aspectRatio, availableHeight * 0.4);
+                const actualWidth = height * img.aspectRatio;
+                
+                const x = margin + (i * (availableWidth * 0.5)) + (topRowWidth - actualWidth) / 2;
+                const y = startY + 10;
+                
+                pdf.addImage(img.src, 'JPEG', x, y, actualWidth, height);
+            }
+            
+            // Bottom photo - larger and centered
+            const img = images[2];
+            const maxHeight = availableHeight * 0.5;
+            const height = Math.min(maxHeight, bottomWidth / img.aspectRatio);
+            const width = height * img.aspectRatio;
+            
+            const x = margin + (availableWidth - width) / 2;
+            const y = startY + availableHeight * 0.5;
+            
+            pdf.addImage(img.src, 'JPEG', x, y, width, height);
+        }
+
+        async function layoutFourPhotos(pdf, images, availableWidth, availableHeight, startY, margin) {
+            // 2x2 grid with slight rotation and overlap for dynamic look
+            const gridSize = Math.min(availableWidth, availableHeight) * 0.45;
+            const overlap = 5;
+            
+            const positions = [
+                { x: 0, y: 0, rotation: -2 },
+                { x: 1, y: 0, rotation: 1 },
+                { x: 0, y: 1, rotation: 1 },
+                { x: 1, y: 1, rotation: -1 }
+            ];
+            
+            for (let i = 0; i < 4; i++) {
+                const img = images[i];
+                const pos = positions[i];
+                
+                const size = gridSize;
+                const height = Math.min(size, size / img.aspectRatio);
+                const width = height * img.aspectRatio;
+                
+                const x = margin + (pos.x * (gridSize - overlap)) + (availableWidth - gridSize * 2 + overlap) / 2;
+                const y = startY + (pos.y * (gridSize - overlap)) + (availableHeight - gridSize * 2 + overlap) / 2;
+                
+                // Add slight rotation for dynamic look (jsPDF doesn't support rotation, so we'll use positioning)
+                const offsetX = pos.rotation * 2;
+                const offsetY = pos.rotation * 1;
+                
+                pdf.addImage(img.src, 'JPEG', x + offsetX, y + offsetY, width, height);
+            }
+        }
+
+        async function layoutFivePhotos(pdf, images, availableWidth, availableHeight, startY, margin) {
+            // Creative asymmetrical layout: 2 on left, 3 stacked on right
+            const leftWidth = availableWidth * 0.45;
+            const rightWidth = availableWidth * 0.5;
+            const gap = availableWidth * 0.05;
+            
+            // Left side - two photos vertically
+            for (let i = 0; i < 2; i++) {
+                const img = images[i];
+                const height = availableHeight * 0.4;
+                const width = Math.min(leftWidth, height * img.aspectRatio);
+                
+                const x = margin;
+                const y = startY + (i * (availableHeight * 0.45)) + 10;
+                
+                pdf.addImage(img.src, 'JPEG', x, y, width, height);
+            }
+            
+            // Right side - three photos in creative arrangement
+            const rightStartX = margin + leftWidth + gap;
+            const smallPhotoSize = rightWidth * 0.6;
+            
+            for (let i = 2; i < 5; i++) {
+                const img = images[i];
+                const isLarge = i === 2; // First photo on right is larger
+                
+                let width, height, x, y;
+                
+                if (isLarge) {
+                    height = availableHeight * 0.5;
+                    width = Math.min(rightWidth, height * img.aspectRatio);
+                    x = rightStartX;
+                    y = startY + 10;
+                } else {
+                    // Smaller photos arranged below
+                    height = availableHeight * 0.25;
+                    width = Math.min(smallPhotoSize, height * img.aspectRatio);
+                    x = rightStartX + ((i - 3) * rightWidth * 0.4);
+                    y = startY + availableHeight * 0.65 + ((i - 3) * 10); // Slight offset
+                }
+                
+                pdf.addImage(img.src, 'JPEG', x, y, width, height);
+            }
         }
 
         async function generateMasterPDF() {
