@@ -625,17 +625,10 @@
 
             // Set font
             ctx.fillStyle = '#000000';
-            ctx.font = 'bold 80px Arial, sans-serif'; // ~22pt at 300 DPI
-            ctx.textAlign = 'center';
-
-            // Add name
-            ctx.fillText(currentSubmission.name, size / 2, yPos + 60);
-            yPos += 120;
-
-            // Add message
             ctx.font = '60px Arial, sans-serif'; // ~16pt at 300 DPI
             ctx.textAlign = 'left';
-            
+
+            // Add message first (at top)
             const maxWidth = size - 2 * margin;
             const lines = wrapText(ctx, currentSubmission.message, maxWidth);
             
@@ -644,12 +637,21 @@
                 yPos += 70;
             }
             
-            yPos += 60; // Space before photos
+            yPos += 40; // Space between message and photos
+
+            // Calculate space for photos (reserve space for name at bottom)
+            const nameSpaceNeeded = 120; // Space for name at bottom
+            const availableHeightForPhotos = size - yPos - nameSpaceNeeded - margin;
 
             // Arrange photos
             if (currentSubmission.photos.length > 0) {
-                await arrangePhotosCanvas(ctx, currentSubmission.photos, size, size, yPos, margin);
+                await arrangePhotosCanvas(ctx, currentSubmission.photos, size, availableHeightForPhotos, yPos, margin);
             }
+
+            // Add name at bottom, centered
+            ctx.font = 'bold 80px Arial, sans-serif'; // ~22pt at 300 DPI
+            ctx.textAlign = 'center';
+            ctx.fillText(currentSubmission.name, size / 2, size - margin - 20);
 
             // Convert canvas to PNG and download
             canvas.toBlob((blob) => {
@@ -688,9 +690,8 @@
             return lines;
         }
 
-        async function arrangePhotosCanvas(ctx, photos, canvasWidth, canvasHeight, startY, margin) {
+        async function arrangePhotosCanvas(ctx, photos, canvasWidth, availableHeightForPhotos, startY, margin) {
             const availableWidth = canvasWidth - 2 * margin;
-            const availableHeight = canvasHeight - startY - margin;
             
             // Load all images
             const imageData = await Promise.all(photos.map(async (photo) => {
@@ -712,13 +713,13 @@
             // Layout based on number of photos - maximize space usage, no overlapping
             switch (imageData.length) {
                 case 1:
-                    await layoutSinglePhotoCanvas(ctx, imageData[0], availableWidth, availableHeight, startY, margin);
+                    await layoutSinglePhotoCanvas(ctx, imageData[0], availableWidth, availableHeightForPhotos, startY, margin);
                     break;
                 case 2:
-                    await layoutTwoPhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin);
+                    await layoutTwoPhotosCanvas(ctx, imageData, availableWidth, availableHeightForPhotos, startY, margin);
                     break;
                 case 3:
-                    await layoutThreePhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin);
+                    await layoutThreePhotosCanvas(ctx, imageData, availableWidth, availableHeightForPhotos, startY, margin);
                     break;
             }
         }
