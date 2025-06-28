@@ -709,44 +709,28 @@
                 });
             }));
 
-            // Calculate global scale for proper fitting
-            const totalImageArea = imageData.reduce((sum, data) => sum + (data.width * data.height), 0);
-            const availableArea = availableWidth * availableHeight * 0.6; // Use 60% of available space
-            const globalScale = Math.sqrt(availableArea / totalImageArea) * 0.8; // Additional scale factor
-
-            // Layout based on number of photos
+            // Layout based on number of photos - maximize space usage, no overlapping
             switch (imageData.length) {
                 case 1:
-                    await layoutSinglePhotoCanvas(ctx, imageData[0], availableWidth, availableHeight, startY, margin, globalScale);
+                    await layoutSinglePhotoCanvas(ctx, imageData[0], availableWidth, availableHeight, startY, margin);
                     break;
                 case 2:
-                    await layoutTwoPhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin, globalScale);
+                    await layoutTwoPhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin);
                     break;
                 case 3:
-                    await layoutThreePhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin, globalScale);
-                    break;
-                case 4:
-                    await layoutFourPhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin, globalScale);
-                    break;
-                case 5:
-                    await layoutFivePhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin, globalScale);
+                    await layoutThreePhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin);
                     break;
             }
         }
 
-        async function layoutSinglePhotoCanvas(ctx, imgData, availableWidth, availableHeight, startY, margin, globalScale) {
-            const maxWidth = availableWidth * 0.8;
-            const maxHeight = availableHeight * 0.8;
+        async function layoutSinglePhotoCanvas(ctx, imgData, availableWidth, availableHeight, startY, margin) {
+            // Use maximum available space for single photo
+            let width = availableWidth * 0.95;
+            let height = width / imgData.aspectRatio;
             
-            let width = imgData.width * globalScale * 2;
-            let height = imgData.height * globalScale * 2;
-            
-            if (width > maxWidth) {
-                width = maxWidth;
-                height = width / imgData.aspectRatio;
-            }
-            if (height > maxHeight) {
-                height = maxHeight;
+            // If height exceeds available space, scale by height instead
+            if (height > availableHeight * 0.95) {
+                height = availableHeight * 0.95;
                 width = height * imgData.aspectRatio;
             }
             
@@ -756,165 +740,235 @@
             ctx.drawImage(imgData.img, x, y, width, height);
         }
 
-        async function layoutTwoPhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin, globalScale) {
+        async function layoutTwoPhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin) {
             const img1 = imageData[0], img2 = imageData[1];
-            const bothPortrait = img1.aspectRatio < 1 && img2.aspectRatio < 1;
             
-            if (bothPortrait) {
-                // Side by side
-                const photoWidth = (availableWidth - 40) / 2;
-                
-                for (let i = 0; i < 2; i++) {
-                    const imgData = imageData[i];
-                    let width = Math.min(photoWidth, imgData.width * globalScale * 1.5);
-                    let height = width / imgData.aspectRatio;
-                    
-                    if (height > availableHeight * 0.8) {
-                        height = availableHeight * 0.8;
-                        width = height * imgData.aspectRatio;
-                    }
-                    
-                    const x = margin + (i * (photoWidth + 40)) + (photoWidth - width) / 2;
-                    const y = startY + (availableHeight - height) / 2 + (i % 2) * 30;
-                    
-                    ctx.drawImage(imgData.img, x, y, width, height);
-                }
+            // Determine optimal arrangement based on aspect ratios
+            const totalAspectRatio = img1.aspectRatio + img2.aspectRatio;
+            const availableAspectRatio = availableWidth / availableHeight;
+            
+            if (totalAspectRatio > availableAspectRatio * 1.5) {
+                // Stack vertically for very wide photos or limited height
+                await layoutTwoPhotosVertical(ctx, imageData, availableWidth, availableHeight, startY, margin);
             } else {
-                // Overlapping arrangement
-                const baseSize = Math.min(availableWidth, availableHeight) * 0.5;
-                
-                for (let i = 0; i < 2; i++) {
-                    const imgData = imageData[i];
-                    let width = Math.min(baseSize, imgData.width * globalScale * 1.3);
-                    let height = width / imgData.aspectRatio;
-                    
-                    if (height > availableHeight * 0.7) {
-                        height = availableHeight * 0.7;
-                        width = height * imgData.aspectRatio;
-                    }
-                    
-                    const offsetX = i * (availableWidth * 0.25);
-                    const offsetY = i * 50;
-                    
-                    const x = margin + offsetX + (availableWidth * 0.4 - width) / 2;
-                    const y = startY + offsetY + (availableHeight - height) / 2;
-                    
-                    ctx.drawImage(imgData.img, x, y, width, height);
-                }
+                // Arrange side by side
+                await layoutTwoPhotosHorizontal(ctx, imageData, availableWidth, availableHeight, startY, margin);
             }
         }
 
-        async function layoutThreePhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin, globalScale) {
-            // Triangle/L-shape arrangement
-            const positions = [
-                { x: 0.1, y: 0.1, scale: 1.2 },
-                { x: 0.55, y: 0.05, scale: 1.0 },
-                { x: 0.25, y: 0.55, scale: 1.1 }
-            ];
+        async function layoutTwoPhotosHorizontal(ctx, imageData, availableWidth, availableHeight, startY, margin) {
+            const gap = 15; // Minimal gap between photos
+            const img1 = imageData[0], img2 = imageData[1];
+            
+            // Calculate optimal widths based on aspect ratios
+            const ratio1 = img1.aspectRatio;
+            const ratio2 = img2.aspectRatio;
+            const totalRatio = ratio1 + ratio2;
+            
+            const width1 = ((availableWidth - gap) * ratio1) / totalRatio;
+            const width2 = ((availableWidth - gap) * ratio2) / totalRatio;
+            
+            const height1 = width1 / ratio1;
+            const height2 = width2 / ratio2;
+            
+            // Use the limiting height to ensure both photos fit
+            const maxHeight = Math.min(height1, height2, availableHeight * 0.95);
+            
+            const finalWidth1 = maxHeight * ratio1;
+            const finalWidth2 = maxHeight * ratio2;
+            
+            // Center the pair horizontally
+            const totalWidth = finalWidth1 + finalWidth2 + gap;
+            const startX = margin + (availableWidth - totalWidth) / 2;
+            const y = startY + (availableHeight - maxHeight) / 2;
+            
+            // Draw photos
+            ctx.drawImage(img1.img, startX, y, finalWidth1, maxHeight);
+            ctx.drawImage(img2.img, startX + finalWidth1 + gap, y, finalWidth2, maxHeight);
+        }
+
+        async function layoutTwoPhotosVertical(ctx, imageData, availableWidth, availableHeight, startY, margin) {
+            const gap = 15;
+            const img1 = imageData[0], img2 = imageData[1];
+            
+            // Calculate heights based on maintaining aspect ratios
+            const availableHeightPerPhoto = (availableHeight - gap) / 2;
+            
+            // Try to make photos similar width when possible
+            const width1 = Math.min(availableWidth * 0.95, availableHeightPerPhoto * img1.aspectRatio);
+            const width2 = Math.min(availableWidth * 0.95, availableHeightPerPhoto * img2.aspectRatio);
+            
+            const height1 = width1 / img1.aspectRatio;
+            const height2 = width2 / img2.aspectRatio;
+            
+            // Center each photo horizontally
+            const x1 = margin + (availableWidth - width1) / 2;
+            const x2 = margin + (availableWidth - width2) / 2;
+            
+            // Distribute vertically with minimal gap
+            const totalHeight = height1 + height2 + gap;
+            const startYPos = startY + (availableHeight - totalHeight) / 2;
+            
+            ctx.drawImage(img1.img, x1, startYPos, width1, height1);
+            ctx.drawImage(img2.img, x2, startYPos + height1 + gap, width2, height2);
+        }
+
+        async function layoutThreePhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin) {
+            // Analyze aspect ratios to determine best layout
+            const aspects = imageData.map(img => img.aspectRatio);
+            const landscapes = aspects.filter(a => a > 1.3).length;
+            const portraits = aspects.filter(a => a < 0.7).length;
+            const squares = imageData.length - landscapes - portraits;
+            
+            if (landscapes >= 2) {
+                // Two landscape photos on top, one below
+                await layoutThreePhotosLandscapeTop(ctx, imageData, availableWidth, availableHeight, startY, margin);
+            } else if (portraits >= 2) {
+                // Two portraits side by side, one below or above
+                await layoutThreePhotosPortraitSide(ctx, imageData, availableWidth, availableHeight, startY, margin);
+            } else {
+                // Mixed layout - one large, two smaller
+                await layoutThreePhotosMixed(ctx, imageData, availableWidth, availableHeight, startY, margin);
+            }
+        }
+
+        async function layoutThreePhotosLandscapeTop(ctx, imageData, availableWidth, availableHeight, startY, margin) {
+            const gap = 12;
+            
+            // Top row - two photos
+            const topHeight = availableHeight * 0.55;
+            const topWidth = (availableWidth - gap) / 2;
+            
+            for (let i = 0; i < 2; i++) {
+                const imgData = imageData[i];
+                let width = topWidth;
+                let height = width / imgData.aspectRatio;
+                
+                if (height > topHeight) {
+                    height = topHeight;
+                    width = height * imgData.aspectRatio;
+                }
+                
+                const x = margin + (i * (topWidth + gap)) + (topWidth - width) / 2;
+                const y = startY;
+                
+                ctx.drawImage(imgData.img, x, y, width, height);
+            }
+            
+            // Bottom photo - larger and centered
+            const imgData = imageData[2];
+            const bottomHeight = availableHeight * 0.4;
+            let width = Math.min(availableWidth * 0.8, bottomHeight * imgData.aspectRatio);
+            let height = width / imgData.aspectRatio;
+            
+            if (height > bottomHeight) {
+                height = bottomHeight;
+                width = height * imgData.aspectRatio;
+            }
+            
+            const x = margin + (availableWidth - width) / 2;
+            const y = startY + availableHeight * 0.58;
+            
+            ctx.drawImage(imgData.img, x, y, width, height);
+        }
+
+        async function layoutThreePhotosPortraitSide(ctx, imageData, availableWidth, availableHeight, startY, margin) {
+            const gap = 12;
+            
+            // Find the best photo for the single large position
+            let largeIndex = 0;
+            let maxArea = 0;
             
             for (let i = 0; i < 3; i++) {
-                const imgData = imageData[i];
-                const pos = positions[i];
-                
-                let width = imgData.width * globalScale * pos.scale;
-                let height = imgData.height * globalScale * pos.scale;
-                
-                const maxSize = Math.min(availableWidth, availableHeight) * 0.4;
-                if (width > maxSize) {
-                    width = maxSize;
-                    height = width / imgData.aspectRatio;
+                const area = imageData[i].width * imageData[i].height;
+                if (area > maxArea) {
+                    maxArea = area;
+                    largeIndex = i;
                 }
-                if (height > maxSize) {
-                    height = maxSize;
-                    width = height * imgData.aspectRatio;
-                }
-                
-                const x = margin + (pos.x * (availableWidth - width));
-                const y = startY + (pos.y * (availableHeight - height));
-                
-                ctx.drawImage(imgData.img, x, y, width, height);
             }
-        }
-
-        async function layoutFourPhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin, globalScale) {
-            // 2x2 grid with offsets
-            const gridGap = 30;
-            const cellWidth = (availableWidth - gridGap) / 2;
-            const cellHeight = (availableHeight - gridGap) / 2;
             
-            const positions = [
-                { row: 0, col: 0, offsetX: 0, offsetY: 0 },
-                { row: 0, col: 1, offsetX: 15, offsetY: -10 },
-                { row: 1, col: 0, offsetX: -8, offsetY: 8 },
-                { row: 1, col: 1, offsetX: 12, offsetY: 15 }
-            ];
+            // Large photo on left
+            const largeData = imageData[largeIndex];
+            const largeWidth = availableWidth * 0.6;
+            let largeHeight = largeWidth / largeData.aspectRatio;
             
-            for (let i = 0; i < 4; i++) {
-                const imgData = imageData[i];
-                const pos = positions[i];
+            if (largeHeight > availableHeight * 0.95) {
+                largeHeight = availableHeight * 0.95;
+                const actualLargeWidth = largeHeight * largeData.aspectRatio;
+                const x1 = margin + (largeWidth - actualLargeWidth) / 2;
+                const y1 = startY + (availableHeight - largeHeight) / 2;
+                ctx.drawImage(largeData.img, x1, y1, actualLargeWidth, largeHeight);
+            } else {
+                const x1 = margin;
+                const y1 = startY + (availableHeight - largeHeight) / 2;
+                ctx.drawImage(largeData.img, x1, y1, largeWidth, largeHeight);
+            }
+            
+            // Two smaller photos on right
+            const rightWidth = availableWidth * 0.35;
+            const rightStartX = margin + largeWidth + gap;
+            const photoHeight = (availableHeight - gap) / 2;
+            
+            let rightIndex = 0;
+            for (let i = 0; i < 3; i++) {
+                if (i === largeIndex) continue;
                 
-                let width = Math.min(cellWidth * 0.85, imgData.width * globalScale);
+                const imgData = imageData[i];
+                let width = Math.min(rightWidth, photoHeight * imgData.aspectRatio);
                 let height = width / imgData.aspectRatio;
                 
-                if (height > cellHeight * 0.85) {
-                    height = cellHeight * 0.85;
+                if (height > photoHeight) {
+                    height = photoHeight;
                     width = height * imgData.aspectRatio;
                 }
                 
-                const baseX = margin + (pos.col * (cellWidth + gridGap));
-                const baseY = startY + (pos.row * (cellHeight + gridGap));
-                
-                const x = baseX + (cellWidth - width) / 2 + pos.offsetX;
-                const y = baseY + (cellHeight - height) / 2 + pos.offsetY;
+                const x = rightStartX + (rightWidth - width) / 2;
+                const y = startY + (rightIndex * (photoHeight + gap)) + (photoHeight - height) / 2;
                 
                 ctx.drawImage(imgData.img, x, y, width, height);
+                rightIndex++;
             }
         }
 
-        async function layoutFivePhotosCanvas(ctx, imageData, availableWidth, availableHeight, startY, margin, globalScale) {
-            // Asymmetrical layout - one large, four small
-            const leftWidth = availableWidth * 0.45;
-            const rightWidth = availableWidth * 0.5;
-            const centerGap = availableWidth * 0.05;
+        async function layoutThreePhotosMixed(ctx, imageData, availableWidth, availableHeight, startY, margin) {
+            const gap = 12;
             
-            // Main photo on left
+            // One photo takes 60% width, other two share remaining 35%
+            const mainWidth = availableWidth * 0.6;
+            const sideWidth = availableWidth * 0.35;
+            
+            // Main photo (choose the one with best aspect ratio for the space)
             const mainData = imageData[0];
-            let mainWidth = Math.min(leftWidth, mainData.width * globalScale * 1.4);
             let mainHeight = mainWidth / mainData.aspectRatio;
             
-            const maxMainHeight = availableHeight * 0.8;
-            if (mainHeight > maxMainHeight) {
-                mainHeight = maxMainHeight;
-                mainWidth = mainHeight * mainData.aspectRatio;
+            if (mainHeight > availableHeight * 0.95) {
+                mainHeight = availableHeight * 0.95;
+                const actualMainWidth = mainHeight * mainData.aspectRatio;
+                const x1 = margin + (mainWidth - actualMainWidth) / 2;
+                const y1 = startY + (availableHeight - mainHeight) / 2;
+                ctx.drawImage(mainData.img, x1, y1, actualMainWidth, mainHeight);
+            } else {
+                const x1 = margin;
+                const y1 = startY + (availableHeight - mainHeight) / 2;
+                ctx.drawImage(mainData.img, x1, y1, mainWidth, mainHeight);
             }
             
-            const mainX = margin + (leftWidth - mainWidth) / 2;
-            const mainY = startY + (availableHeight - mainHeight) / 2;
-            ctx.drawImage(mainData.img, mainX, mainY, mainWidth, mainHeight);
+            // Two side photos
+            const sideStartX = margin + mainWidth + gap;
+            const sidePhotoHeight = (availableHeight - gap) / 2;
             
-            // Four smaller photos on right
-            const rightStartX = margin + leftWidth + centerGap;
-            const rightPositions = [
-                { x: 0, y: 0.1, scale: 1.0 },
-                { x: 0.55, y: 0.05, scale: 0.8 },
-                { x: 0.1, y: 0.55, scale: 0.9 },
-                { x: 0.5, y: 0.65, scale: 0.85 }
-            ];
-            
-            for (let i = 1; i < 5; i++) {
+            for (let i = 1; i < 3; i++) {
                 const imgData = imageData[i];
-                const pos = rightPositions[i - 1];
-                
-                let width = Math.min(rightWidth * 0.4 * pos.scale, imgData.width * globalScale);
+                let width = Math.min(sideWidth, sidePhotoHeight * imgData.aspectRatio);
                 let height = width / imgData.aspectRatio;
                 
-                if (height > availableHeight * 0.3) {
-                    height = availableHeight * 0.3;
+                if (height > sidePhotoHeight) {
+                    height = sidePhotoHeight;
                     width = height * imgData.aspectRatio;
                 }
                 
-                const x = rightStartX + (pos.x * (rightWidth - width));
-                const y = startY + (pos.y * (availableHeight - height));
+                const x = sideStartX + (sideWidth - width) / 2;
+                const y = startY + ((i - 1) * (sidePhotoHeight + gap)) + (sidePhotoHeight - height) / 2;
                 
                 ctx.drawImage(imgData.img, x, y, width, height);
             }
