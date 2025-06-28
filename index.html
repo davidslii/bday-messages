@@ -90,30 +90,6 @@
             resize: vertical;
         }
 
-        .formatting-tools {
-            margin-bottom: 10px;
-            padding: 10px;
-            background: #f7fafc;
-            border-radius: 8px;
-            border: 1px solid #e2e8f0;
-        }
-
-        .formatting-tools button {
-            background: #4a5568;
-            color: white;
-            border: none;
-            padding: 6px 12px;
-            margin-right: 5px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            transition: background 0.3s ease;
-        }
-
-        .formatting-tools button:hover {
-            background: #2d3748;
-        }
-
         .photo-upload {
             border: 2px dashed #cbd5e0;
             border-radius: 10px;
@@ -455,11 +431,6 @@
 
                 <div class="form-group">
                     <label for="birthdayMessage">Birthday Message *</label>
-                    <div class="formatting-tools">
-                        <button type="button" onclick="formatText('bold')"><strong>B</strong></button>
-                        <button type="button" onclick="formatText('italic')"><em>I</em></button>
-                        <button type="button" onclick="formatText('underline')"><u>U</u></button>
-                    </div>
                     <textarea id="birthdayMessage" required placeholder="Write your birthday message here..."></textarea>
                 </div>
 
@@ -601,33 +572,6 @@
             countElement.textContent = `${selectedPhotos.length} / 5 photos selected`;
         }
 
-        // Text formatting
-        function formatText(command) {
-            const textarea = document.getElementById('birthdayMessage');
-            const start = textarea.selectionStart;
-            const end = textarea.selectionEnd;
-            const selectedText = textarea.value.substring(start, end);
-            
-            if (selectedText) {
-                let formattedText;
-                switch(command) {
-                    case 'bold':
-                        formattedText = `**${selectedText}**`;
-                        break;
-                    case 'italic':
-                        formattedText = `*${selectedText}*`;
-                        break;
-                    case 'underline':
-                        formattedText = `__${selectedText}__`;
-                        break;
-                }
-                
-                textarea.value = textarea.value.substring(0, start) + formattedText + textarea.value.substring(end);
-                textarea.focus();
-                textarea.setSelectionRange(start, start + formattedText.length);
-            }
-        }
-
         // Form submission
         document.getElementById('messageForm').addEventListener('submit', function(e) {
             e.preventDefault();
@@ -671,48 +615,69 @@
             const margin = 20;
             let yPos = margin;
 
-            // Add title
-            pdf.setFontSize(24);
-            pdf.setTextColor(102, 126, 234);
-            pdf.text('🎉 Birthday Message 🎉', pageWidth / 2, yPos, { align: 'center' });
-            yPos += 20;
+            // Set font to Helvetica
+            pdf.setFont('helvetica');
 
             // Add name
             pdf.setFontSize(18);
-            pdf.setTextColor(45, 55, 72);
-            pdf.text(`From: ${currentSubmission.name}`, margin, yPos);
+            pdf.setTextColor(0, 0, 0);
+            pdf.text(currentSubmission.name, margin, yPos);
             yPos += 15;
 
             // Add message
-            pdf.setFontSize(12);
-            pdf.setTextColor(74, 85, 104);
+            pdf.setFontSize(18);
+            pdf.setTextColor(0, 0, 0);
             const messageLines = pdf.splitTextToSize(currentSubmission.message, pageWidth - 2 * margin);
             pdf.text(messageLines, margin, yPos);
-            yPos += messageLines.length * 6 + 20;
+            yPos += messageLines.length * 8 + 20;
 
             // Add photos
             if (currentSubmission.photos.length > 0) {
-                pdf.setFontSize(14);
-                pdf.setTextColor(102, 126, 234);
-                pdf.text('Photos:', margin, yPos);
-                yPos += 10;
-
                 for (let i = 0; i < currentSubmission.photos.length; i++) {
                     const photo = currentSubmission.photos[i];
                     
                     try {
-                        // Check if we need a new page
-                        if (yPos > pageHeight - 80) {
-                            pdf.addPage();
-                            yPos = margin;
-                        }
-
-                        // Add photo
-                        const imgWidth = Math.min(pageWidth - 2 * margin, 120);
-                        const imgHeight = 80;
+                        // Load image to get dimensions
+                        const img = new Image();
+                        img.src = photo;
                         
-                        pdf.addImage(photo, 'JPEG', margin, yPos, imgWidth, imgHeight);
-                        yPos += imgHeight + 15;
+                        await new Promise((resolve) => {
+                            img.onload = () => {
+                                // Calculate aspect ratio preserving dimensions
+                                const originalWidth = img.width;
+                                const originalHeight = img.height;
+                                const aspectRatio = originalWidth / originalHeight;
+                                
+                                // Max available width and height on page
+                                const maxWidth = pageWidth - 2 * margin;
+                                const maxHeight = pageHeight - yPos - margin;
+                                
+                                let imgWidth, imgHeight;
+                                
+                                // Scale to fit within available space while preserving aspect ratio
+                                if (aspectRatio > 1) {
+                                    // Landscape orientation
+                                    imgWidth = Math.min(maxWidth, 120);
+                                    imgHeight = imgWidth / aspectRatio;
+                                } else {
+                                    // Portrait orientation
+                                    imgHeight = Math.min(maxHeight, 120);
+                                    imgWidth = imgHeight * aspectRatio;
+                                }
+                                
+                                // Ensure image fits on current page, otherwise add new page
+                                if (yPos + imgHeight > pageHeight - margin) {
+                                    pdf.addPage();
+                                    yPos = margin;
+                                }
+                                
+                                // Add image with preserved aspect ratio
+                                pdf.addImage(photo, 'JPEG', margin, yPos, imgWidth, imgHeight);
+                                yPos += imgHeight + 15;
+                                
+                                resolve();
+                            };
+                        });
                         
                     } catch (error) {
                         console.error('Error adding image to PDF:', error);
@@ -720,11 +685,6 @@
                     }
                 }
             }
-
-            // Add footer
-            pdf.setFontSize(8);
-            pdf.setTextColor(128, 128, 128);
-            pdf.text(`Created on ${new Date().toLocaleDateString()}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
 
             // Save the PDF
             const fileName = `birthday-message-${currentSubmission.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
@@ -744,52 +704,27 @@
             const pageHeight = pdf.internal.pageSize.getHeight();
             const margin = 20;
 
-            // Cover page
-            pdf.setFontSize(28);
-            pdf.setTextColor(102, 126, 234);
-            pdf.text('🎂 Birthday Messages Book 🎂', pageWidth / 2, 100, { align: 'center' });
-            
-            pdf.setFontSize(16);
-            pdf.setTextColor(74, 85, 104);
-            pdf.text(`${submissions.length} Messages from Friends & Family`, pageWidth / 2, 120, { align: 'center' });
-            
-            pdf.setFontSize(12);
-            pdf.text(`Created on ${new Date().toLocaleDateString()}`, pageWidth / 2, 140, { align: 'center' });
-
-            // Table of contents
-            pdf.addPage();
-            pdf.setFontSize(20);
-            pdf.setTextColor(102, 126, 234);
-            pdf.text('Table of Contents', margin, 30);
-            
-            let tocY = 50;
-            pdf.setFontSize(12);
-            pdf.setTextColor(45, 55, 72);
-            
-            submissions.forEach((submission, index) => {
-                pdf.text(`${index + 1}. ${submission.name}`, margin, tocY);
-                pdf.text(`Page ${index + 3}`, pageWidth - margin - 20, tocY);
-                tocY += 8;
-            });
+            // Set font to Helvetica
+            pdf.setFont('helvetica');
 
             // Individual submissions
             for (let i = 0; i < submissions.length; i++) {
                 const submission = submissions[i];
-                pdf.addPage();
+                if (i > 0) pdf.addPage(); // Add new page for each submission except first
                 let yPos = margin;
 
-                // Name header
-                pdf.setFontSize(22);
-                pdf.setTextColor(102, 126, 234);
-                pdf.text(submission.name, pageWidth / 2, yPos, { align: 'center' });
-                yPos += 20;
+                // Name
+                pdf.setFontSize(18);
+                pdf.setTextColor(0, 0, 0);
+                pdf.text(submission.name, margin, yPos);
+                yPos += 15;
 
                 // Message
-                pdf.setFontSize(12);
-                pdf.setTextColor(74, 85, 104);
+                pdf.setFontSize(18);
+                pdf.setTextColor(0, 0, 0);
                 const messageLines = pdf.splitTextToSize(submission.message, pageWidth - 2 * margin);
                 pdf.text(messageLines, margin, yPos);
-                yPos += messageLines.length * 6 + 20;
+                yPos += messageLines.length * 8 + 20;
 
                 // Photos
                 if (submission.photos && submission.photos.length > 0) {
@@ -797,17 +732,47 @@
                         const photo = submission.photos[j];
                         
                         try {
-                            // Check if we need a new page
-                            if (yPos > pageHeight - 90) {
-                                pdf.addPage();
-                                yPos = margin;
-                            }
-
-                            const imgWidth = Math.min(pageWidth - 2 * margin, 120);
-                            const imgHeight = 80;
+                            // Load image to get dimensions
+                            const img = new Image();
+                            img.src = photo;
                             
-                            pdf.addImage(photo, 'JPEG', margin, yPos, imgWidth, imgHeight);
-                            yPos += imgHeight + 15;
+                            await new Promise((resolve) => {
+                                img.onload = () => {
+                                    // Calculate aspect ratio preserving dimensions
+                                    const originalWidth = img.width;
+                                    const originalHeight = img.height;
+                                    const aspectRatio = originalWidth / originalHeight;
+                                    
+                                    // Max available width and height on page
+                                    const maxWidth = pageWidth - 2 * margin;
+                                    const maxHeight = pageHeight - yPos - margin;
+                                    
+                                    let imgWidth, imgHeight;
+                                    
+                                    // Scale to fit within available space while preserving aspect ratio
+                                    if (aspectRatio > 1) {
+                                        // Landscape orientation
+                                        imgWidth = Math.min(maxWidth, 120);
+                                        imgHeight = imgWidth / aspectRatio;
+                                    } else {
+                                        // Portrait orientation
+                                        imgHeight = Math.min(maxHeight, 120);
+                                        imgWidth = imgHeight * aspectRatio;
+                                    }
+                                    
+                                    // Ensure image fits on current page, otherwise add new page
+                                    if (yPos + imgHeight > pageHeight - margin) {
+                                        pdf.addPage();
+                                        yPos = margin;
+                                    }
+                                    
+                                    // Add image with preserved aspect ratio
+                                    pdf.addImage(photo, 'JPEG', margin, yPos, imgWidth, imgHeight);
+                                    yPos += imgHeight + 15;
+                                    
+                                    resolve();
+                                };
+                            });
                             
                         } catch (error) {
                             console.error('Error adding image to PDF:', error);
@@ -843,14 +808,6 @@
             setTimeout(() => {
                 successDiv.style.display = 'none';
             }, 5000);
-        }
-
-        function formatMessage(text) {
-            return text
-                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                .replace(/\*(.*?)\*/g, '<em>$1</em>')
-                .replace(/__(.*?)__/g, '<u>$1</u>')
-                .replace(/\n/g, '<br>');
         }
 
         function updateGallery() {
