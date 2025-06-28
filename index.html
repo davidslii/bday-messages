@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Birthday Messages Gallery</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -192,6 +193,10 @@
 
         .export-btn {
             background: linear-gradient(45deg, #38a169, #48bb78);
+        }
+
+        .pdf-btn {
+            background: linear-gradient(45deg, #e53e3e, #fc8181);
         }
 
         .import-btn {
@@ -470,7 +475,7 @@
 
                 <div class="button-group">
                     <button type="submit" class="submit-btn">Submit Message 🎂</button>
-                    <button type="button" class="export-btn" id="exportBtn" onclick="exportCurrentSubmission()" style="display: none;">📤 Download My Submission</button>
+                    <button type="button" class="pdf-btn" id="pdfBtn" onclick="generatePDF()" style="display: none;">📄 Download PDF</button>
                 </div>
             </form>
         </div>
@@ -480,11 +485,11 @@
             <h3 style="margin-bottom: 20px; color: #2d3748;">Master Gallery Controls</h3>
             <p style="margin-bottom: 20px; color: #4a5568;">Import submission files from your friends to build the complete gallery</p>
             <div class="button-group">
-                <button class="import-btn" onclick="document.getElementById('importInput').click()">📁 Import Submissions</button>
-                <button class="export-btn" onclick="exportAllSubmissions()">💾 Export Complete Gallery</button>
+                <button class="import-btn" onclick="document.getElementById('importInput').click()">📁 Import PDFs</button>
+                <button class="pdf-btn" onclick="generateMasterPDF()">📄 Generate Complete PDF Book</button>
                 <button class="nav-btn" onclick="clearAllSubmissions()">🗑️ Clear Gallery</button>
             </div>
-            <input type="file" id="importInput" multiple accept=".json" onchange="importSubmissions(event)">
+            <input type="file" id="importInput" multiple accept=".pdf" onchange="importPDFs(event)">
             <div class="success-message" id="successMessage"></div>
         </div>
 
@@ -520,6 +525,10 @@
         let submissions = [];
         let currentSubmissionIndex = 0;
         let selectedPhotos = [];
+        let currentSubmission = null;
+
+        // Initialize jsPDF
+        const { jsPDF } = window.jspdf;
 
         // File upload handling
         const photoInput = document.getElementById('photoInput');
@@ -631,113 +640,192 @@
                 return;
             }
             
-            const submission = {
+            currentSubmission = {
                 id: Date.now(),
                 name: name,
-                message: formatMessage(message),
-                rawMessage: message, // Keep original for export
+                message: message,
                 photos: selectedPhotos.map(photo => photo.url),
                 timestamp: new Date().toISOString()
             };
             
-            submissions.push(submission);
+            submissions.push(currentSubmission);
             
-            // Show export button and success message
-            document.getElementById('exportBtn').style.display = 'inline-block';
-            showSuccessMessage('Message submitted! Click "Download My Submission" to save it and send it to the birthday person.');
+            // Show PDF download button
+            document.getElementById('pdfBtn').style.display = 'inline-block';
+            showSuccessMessage('Message submitted! Click "Download PDF" to save it and send it to the birthday person.');
             
             // Show gallery controls
             document.getElementById('viewToggle').style.display = 'block';
             updateGallery();
         });
 
-        function exportCurrentSubmission() {
-            if (submissions.length === 0) {
-                alert('No submission to export!');
+        async function generatePDF() {
+            if (!currentSubmission) {
+                alert('No submission to generate PDF for!');
                 return;
             }
-            
-            const latestSubmission = submissions[submissions.length - 1];
-            const dataStr = JSON.stringify(latestSubmission, null, 2);
-            const dataBlob = new Blob([dataStr], {type: 'application/json'});
-            
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(dataBlob);
-            link.download = `birthday-message-${latestSubmission.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.json`;
-            link.click();
-            
-            showSuccessMessage(`Downloaded! Send the file "${link.download}" to the birthday person.`);
-        }
 
-        function exportAllSubmissions() {
-            if (submissions.length === 0) {
-                alert('No submissions to export!');
-                return;
-            }
-            
-            const dataStr = JSON.stringify(submissions, null, 2);
-            const dataBlob = new Blob([dataStr], {type: 'application/json'});
-            
-            const link = document.createElement('a');
-            link.href = URL.createObjectURL(dataBlob);
-            link.download = `complete-birthday-gallery-${new Date().toISOString().split('T')[0]}.json`;
-            link.click();
-            
-            showSuccessMessage('Complete gallery exported successfully!');
-        }
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pageWidth = pdf.internal.pageSize.getWidth();
+            const pageHeight = pdf.internal.pageSize.getHeight();
+            const margin = 20;
+            let yPos = margin;
 
-        function importSubmissions(event) {
-            const files = event.target.files;
-            let importedCount = 0;
-            
-            Array.from(files).forEach(file => {
-                const reader = new FileReader();
-                reader.onload = function(e) {
+            // Add title
+            pdf.setFontSize(24);
+            pdf.setTextColor(102, 126, 234);
+            pdf.text('🎉 Birthday Message 🎉', pageWidth / 2, yPos, { align: 'center' });
+            yPos += 20;
+
+            // Add name
+            pdf.setFontSize(18);
+            pdf.setTextColor(45, 55, 72);
+            pdf.text(`From: ${currentSubmission.name}`, margin, yPos);
+            yPos += 15;
+
+            // Add message
+            pdf.setFontSize(12);
+            pdf.setTextColor(74, 85, 104);
+            const messageLines = pdf.splitTextToSize(currentSubmission.message, pageWidth - 2 * margin);
+            pdf.text(messageLines, margin, yPos);
+            yPos += messageLines.length * 6 + 20;
+
+            // Add photos
+            if (currentSubmission.photos.length > 0) {
+                pdf.setFontSize(14);
+                pdf.setTextColor(102, 126, 234);
+                pdf.text('Photos:', margin, yPos);
+                yPos += 10;
+
+                for (let i = 0; i < currentSubmission.photos.length; i++) {
+                    const photo = currentSubmission.photos[i];
+                    
                     try {
-                        const data = JSON.parse(e.target.result);
-                        
-                        // Check if it's a single submission or array of submissions
-                        if (Array.isArray(data)) {
-                            data.forEach(submission => {
-                                if (isValidSubmission(submission) && !isDuplicate(submission)) {
-                                    submissions.push(submission);
-                                    importedCount++;
-                                }
-                            });
-                        } else if (isValidSubmission(data) && !isDuplicate(data)) {
-                            submissions.push(data);
-                            importedCount++;
+                        // Check if we need a new page
+                        if (yPos > pageHeight - 80) {
+                            pdf.addPage();
+                            yPos = margin;
                         }
+
+                        // Add photo
+                        const imgWidth = Math.min(pageWidth - 2 * margin, 120);
+                        const imgHeight = 80;
                         
-                        updateGallery();
-                        showSuccessMessage(`Successfully imported ${importedCount} new submission(s)!`);
+                        pdf.addImage(photo, 'JPEG', margin, yPos, imgWidth, imgHeight);
+                        yPos += imgHeight + 15;
                         
                     } catch (error) {
-                        console.error('Error parsing file:', file.name, error);
-                        alert(`Error reading file: ${file.name}`);
+                        console.error('Error adding image to PDF:', error);
+                        // Continue with next photo if one fails
                     }
-                };
-                reader.readAsText(file);
-            });
+                }
+            }
+
+            // Add footer
+            pdf.setFontSize(8);
+            pdf.setTextColor(128, 128, 128);
+            pdf.text(`Created on ${new Date().toLocaleDateString()}`, pageWidth / 2, pageHeight - 10, { align: 'center' });
+
+            // Save the PDF
+            const fileName = `birthday-message-${currentSubmission.name.replace(/[^a-z0-9]/gi, '_').toLowerCase()}.pdf`;
+            pdf.save(fileName);
             
-            // Reset file input
+            showSuccessMessage(`PDF downloaded! Send "${fileName}" to the birthday person.`);
+        }
+
+        async function generateMasterPDF() {
+            if (submissions.length === 0) {
+                alert('No submissions to generate PDF for!');
+                return;
+            }
+
+            const pdf = new jsPDF('p', 'mm', 'a4');
+            const pageWidth = pdf.internal.pageSize.getWidth();
+            const pageHeight = pdf.internal.pageSize.getHeight();
+            const margin = 20;
+
+            // Cover page
+            pdf.setFontSize(28);
+            pdf.setTextColor(102, 126, 234);
+            pdf.text('🎂 Birthday Messages Book 🎂', pageWidth / 2, 100, { align: 'center' });
+            
+            pdf.setFontSize(16);
+            pdf.setTextColor(74, 85, 104);
+            pdf.text(`${submissions.length} Messages from Friends & Family`, pageWidth / 2, 120, { align: 'center' });
+            
+            pdf.setFontSize(12);
+            pdf.text(`Created on ${new Date().toLocaleDateString()}`, pageWidth / 2, 140, { align: 'center' });
+
+            // Table of contents
+            pdf.addPage();
+            pdf.setFontSize(20);
+            pdf.setTextColor(102, 126, 234);
+            pdf.text('Table of Contents', margin, 30);
+            
+            let tocY = 50;
+            pdf.setFontSize(12);
+            pdf.setTextColor(45, 55, 72);
+            
+            submissions.forEach((submission, index) => {
+                pdf.text(`${index + 1}. ${submission.name}`, margin, tocY);
+                pdf.text(`Page ${index + 3}`, pageWidth - margin - 20, tocY);
+                tocY += 8;
+            });
+
+            // Individual submissions
+            for (let i = 0; i < submissions.length; i++) {
+                const submission = submissions[i];
+                pdf.addPage();
+                let yPos = margin;
+
+                // Name header
+                pdf.setFontSize(22);
+                pdf.setTextColor(102, 126, 234);
+                pdf.text(submission.name, pageWidth / 2, yPos, { align: 'center' });
+                yPos += 20;
+
+                // Message
+                pdf.setFontSize(12);
+                pdf.setTextColor(74, 85, 104);
+                const messageLines = pdf.splitTextToSize(submission.message, pageWidth - 2 * margin);
+                pdf.text(messageLines, margin, yPos);
+                yPos += messageLines.length * 6 + 20;
+
+                // Photos
+                if (submission.photos && submission.photos.length > 0) {
+                    for (let j = 0; j < submission.photos.length; j++) {
+                        const photo = submission.photos[j];
+                        
+                        try {
+                            // Check if we need a new page
+                            if (yPos > pageHeight - 90) {
+                                pdf.addPage();
+                                yPos = margin;
+                            }
+
+                            const imgWidth = Math.min(pageWidth - 2 * margin, 120);
+                            const imgHeight = 80;
+                            
+                            pdf.addImage(photo, 'JPEG', margin, yPos, imgWidth, imgHeight);
+                            yPos += imgHeight + 15;
+                            
+                        } catch (error) {
+                            console.error('Error adding image to PDF:', error);
+                        }
+                    }
+                }
+            }
+
+            // Save master PDF
+            const fileName = `complete-birthday-book-${new Date().toISOString().split('T')[0]}.pdf`;
+            pdf.save(fileName);
+            
+            showSuccessMessage('Complete birthday book PDF generated successfully!');
+        }
+
+        function importPDFs(event) {
+            showSuccessMessage('PDF import feature: Have your friends send you their individual PDFs. You can then combine them manually or use the "Generate Complete PDF Book" feature after they submit through the form.');
             event.target.value = '';
-        }
-
-        function isValidSubmission(submission) {
-            return submission && 
-                   typeof submission.name === 'string' && 
-                   typeof submission.message === 'string' && 
-                   Array.isArray(submission.photos) &&
-                   submission.id &&
-                   submission.timestamp;
-        }
-
-        function isDuplicate(newSubmission) {
-            return submissions.some(existing => 
-                existing.id === newSubmission.id || 
-                (existing.name === newSubmission.name && existing.timestamp === newSubmission.timestamp)
-            );
         }
 
         function clearAllSubmissions() {
