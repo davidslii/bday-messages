@@ -625,7 +625,7 @@
 
             // Set font
             ctx.fillStyle = '#000000';
-            ctx.font = '60px Arial, sans-serif'; // ~16pt at 300 DPI
+            ctx.font = '80px Arial, sans-serif'; // Increased from 60px
             ctx.textAlign = 'left';
 
             // Add message first (at top)
@@ -633,8 +633,8 @@
             const lines = wrapText(ctx, currentSubmission.message, maxWidth);
             
             for (let line of lines) {
-                ctx.fillText(line, margin, yPos + 45);
-                yPos += 70;
+                ctx.fillText(line, margin, yPos + 60); // Adjusted for larger font
+                yPos += 90; // Increased line spacing
             }
             
             yPos += 40; // Space between message and photos
@@ -648,10 +648,10 @@
                 await arrangePhotosCanvas(ctx, currentSubmission.photos, size, availableHeightForPhotos, yPos, margin);
             }
 
-            // Add name at bottom, centered
-            ctx.font = 'bold 80px Arial, sans-serif'; // ~22pt at 300 DPI
+            // Add name at bottom, centered with "From: " prefix
+            ctx.font = 'bold 100px Arial, sans-serif'; // Increased from 80px
             ctx.textAlign = 'center';
-            ctx.fillText(currentSubmission.name, size / 2, size - margin - 20);
+            ctx.fillText(`From: ${currentSubmission.name}`, size / 2, size - margin - 20);
 
             // Convert canvas to PNG and download
             canvas.toBlob((blob) => {
